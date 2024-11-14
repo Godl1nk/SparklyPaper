@@ -851,7 +851,7 @@ index 5e2c4969e77c669acbb4a13c07033cb267c3d586..fd9a8dc0e552375802b17b52ae81ffe2
  
          entityplayer1.connection = entityplayer.connection;
 diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
-index 4b54d0ea31062972e68ee8fafe3cfaf68f65a5cd..d9cf7b115e1e8492229a45a71ed9259e5b6f8ba3 100644
+index 4b54d0ea31062972e68ee8fafe3cfaf68f65a5cd..ab71f6e56f8f81c69abe49e69341d858bfa68ea5 100644
 --- a/src/main/java/net/minecraft/world/entity/Entity.java
 +++ b/src/main/java/net/minecraft/world/entity/Entity.java
 @@ -851,7 +851,7 @@ public abstract class Entity implements SyncedDataHolder, Nameable, EntityAccess
@@ -859,11 +859,80 @@ index 4b54d0ea31062972e68ee8fafe3cfaf68f65a5cd..d9cf7b115e1e8492229a45a71ed9259e
      public void postTick() {
          // No clean way to break out of ticking once the entity has been copied to a new world, so instead we move the portalling later in the tick cycle
 -        if (!(this instanceof ServerPlayer) && this.isAlive()) { // Paper - don't attempt to teleport dead entities
-+        if (false && !(this instanceof ServerPlayer) && this.isAlive()) { // Paper - don't attempt to teleport dead entities // SparklyPaper - parallel world ticking (see issue #9, this is executed in the server level tick for non-player entities)
++        if (!(this instanceof ServerPlayer) && this.isAlive()) { // Paper - don't attempt to teleport dead entities // SparklyPaper - parallel world ticking (see issue #9, this is executed in the server level tick for non-player entities)
              this.handlePortal();
          }
      }
-@@ -3996,6 +3996,7 @@ public abstract class Entity implements SyncedDataHolder, Nameable, EntityAccess
+@@ -3266,16 +3266,25 @@ public abstract class Entity implements SyncedDataHolder, Nameable, EntityAccess
+                 if (this.portalProcess.processPortalTeleportation(worldserver, this, this.canUsePortal(false))) {
+                     worldserver.getProfiler().push("portal");
+                     this.setPortalCooldown();
++                    // SparklyPaper start - parallel world ticking
+                     DimensionTransition dimensiontransition = this.portalProcess.getPortalDestination(worldserver, this);
+-
+                     if (dimensiontransition != null) {
+-                        ServerLevel worldserver1 = dimensiontransition.newLevel();
++                        ServerLevel newWorld = dimensiontransition.newLevel();
++                        Runnable runnable = () -> {
++                            ServerLevel worldserver1 = dimensiontransition.newLevel();
+ 
+-                        if (this instanceof ServerPlayer || (worldserver1 != null && (worldserver1.dimension() == worldserver.dimension() || this.canChangeDimensions(worldserver, worldserver1)))) { // CraftBukkit - always call event for players
+-                            this.changeDimension(dimensiontransition);
+-                        }
+-                    }
++                            if (this instanceof ServerPlayer || (worldserver1 != null && (worldserver1.dimension() == worldserver.dimension() || this.canChangeDimensions(worldserver, worldserver1)))) { // CraftBukkit - always call event for players
++                                this.changeDimension(dimensiontransition);
++                            }
++                        };
+ 
++                        if (ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(newWorld))
++                            runnable.run();
++                        else
++                            newWorld.tickExecutor.execute(runnable);
++
++                    }
++                    // SparklyPaper end - parallel world ticking
+                     worldserver.getProfiler().pop();
+                 } else if (this.portalProcess.hasExpired()) {
+                     this.portalProcess = null;
+@@ -3784,17 +3793,25 @@ public abstract class Entity implements SyncedDataHolder, Nameable, EntityAccess
+ 
+                 if (entity2 != null) {
+                     if (this != entity2) {
+-                        // Paper start - Fix item duplication and teleport issues
+-                        if (this instanceof Leashable leashable) {
+-                            leashable.dropLeash(true, true); // Paper drop lead
+-                        }
+-                        // Paper end - Fix item duplication and teleport issues
+-                        entity2.restoreFrom(this);
+-                        this.removeAfterChangingDimensions();
+-                        // CraftBukkit start - Forward the CraftEntity to the new entity
+-                        // this.getBukkitEntity().setHandle(entity2); // Paper - forward CraftEntity in teleport command; moved to Entity#restoreFrom
+-                        // entity2.bukkitEntity = this.getBukkitEntity();
+-                        // CraftBukkit end
++                        // SparklyPaper
++                        Runnable runnable = () -> {
++                            // Paper start - Fix item duplication and teleport issues
++                            if (this instanceof Leashable leashable) {
++                                leashable.dropLeash(true, true); // Paper drop lead
++                            }
++                            // Paper end - Fix item duplication and teleport issues
++                            entity2.restoreFrom(this);
++                            this.removeAfterChangingDimensions();
++                            // CraftBukkit start - Forward the CraftEntity to the new entity
++                            // this.getBukkitEntity().setHandle(entity2); // Paper - forward CraftEntity in teleport command; moved to Entity#restoreFrom
++                            // entity2.bukkitEntity = this.getBukkitEntity();
++                            // CraftBukkit end
++                        };
++
++                        if (ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(worldserver))
++                            runnable.run();
++                        else
++                            worldserver.tickExecutor.execute(runnable);
+                     }
+ 
+                     entity2.moveTo(teleportTarget.pos().x, teleportTarget.pos().y, teleportTarget.pos().z, teleportTarget.yRot(), entity2.getXRot());
+@@ -3996,6 +4013,7 @@ public abstract class Entity implements SyncedDataHolder, Nameable, EntityAccess
              this.teleportPassengers();
              this.setYHeadRot(yaw);
          } else {
@@ -871,6 +940,81 @@ index 4b54d0ea31062972e68ee8fafe3cfaf68f65a5cd..d9cf7b115e1e8492229a45a71ed9259e
              this.unRide();
              Entity entity = this.getType().create(world);
  
+diff --git a/src/main/java/net/minecraft/world/entity/ai/village/poi/PoiManager.java b/src/main/java/net/minecraft/world/entity/ai/village/poi/PoiManager.java
+index a908bf1dc5e821dcf6981a8c21076fb0bdc6516d..15c1d9c119d9b459f5ffb33806b910509733050f 100644
+--- a/src/main/java/net/minecraft/world/entity/ai/village/poi/PoiManager.java
++++ b/src/main/java/net/minecraft/world/entity/ai/village/poi/PoiManager.java
+@@ -71,9 +71,31 @@ public class PoiManager extends SectionStorage<PoiSection> implements ca.spotted
+         final int chunkY = ca.spottedleaf.moonrise.common.util.CoordinateUtils.getChunkSectionY(pos);
+         final int chunkZ = ca.spottedleaf.moonrise.common.util.CoordinateUtils.getChunkSectionZ(pos);
+ 
+-        ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.world, chunkX, chunkZ, "Accessing poi chunk off-main");
++        org.bukkit.craftbukkit.util.Waitable<Optional<PoiSection>> task = new org.bukkit.craftbukkit.util.Waitable<>() {
++            @Override
++            protected Optional<PoiSection> evaluate() {
++                return get2(chunkX, chunkY, chunkZ);
++            }
++        };
+ 
+-        final ca.spottedleaf.moonrise.patches.chunk_system.scheduling.ChunkHolderManager manager = ((ca.spottedleaf.moonrise.patches.chunk_system.level.ChunkSystemServerLevel)this.world).moonrise$getChunkTaskScheduler().chunkHolderManager;
++        if (ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(this.world, chunkX, chunkZ)) {
++            return get2(chunkX, chunkY, chunkZ);
++        } else {
++            world.tickExecutor.execute(task);
++        }
++
++        try {
++            return task.get();
++        } catch (Exception exception) {
++            exception.printStackTrace();
++            return Optional.empty();
++        }
++    }
++
++    private Optional<PoiSection> get2(int chunkX, int chunkY, int chunkZ) {
++        ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(world, chunkX, chunkZ, "Accessing poi chunk off-main");
++
++        final ca.spottedleaf.moonrise.patches.chunk_system.scheduling.ChunkHolderManager manager = ((ca.spottedleaf.moonrise.patches.chunk_system.level.ChunkSystemServerLevel)world).moonrise$getChunkTaskScheduler().chunkHolderManager;
+         final ca.spottedleaf.moonrise.patches.chunk_system.level.poi.PoiChunk ret = manager.getPoiChunkIfLoaded(chunkX, chunkZ, true);
+ 
+         return ret == null ? Optional.empty() : ret.getSectionForVanilla(chunkY);
+@@ -85,11 +107,33 @@ public class PoiManager extends SectionStorage<PoiSection> implements ca.spotted
+         final int chunkY = ca.spottedleaf.moonrise.common.util.CoordinateUtils.getChunkSectionY(pos);
+         final int chunkZ = ca.spottedleaf.moonrise.common.util.CoordinateUtils.getChunkSectionZ(pos);
+ 
+-        ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.world, chunkX, chunkZ, "Accessing poi chunk off-main");
++        org.bukkit.craftbukkit.util.Waitable<Optional<PoiSection>> task = new org.bukkit.craftbukkit.util.Waitable<>() {
++            @Override
++            protected Optional<PoiSection> evaluate() {
++                return getOrLoad2(chunkX, chunkY, chunkZ);
++            }
++        };
+ 
+-        final ca.spottedleaf.moonrise.patches.chunk_system.scheduling.ChunkHolderManager manager = ((ca.spottedleaf.moonrise.patches.chunk_system.level.ChunkSystemServerLevel)this.world).moonrise$getChunkTaskScheduler().chunkHolderManager;
++        if (ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(this.world, chunkX, chunkZ)) {
++            return getOrLoad2(chunkX, chunkY, chunkZ);
++        } else {
++            world.tickExecutor.execute(task);
++        }
++
++        try {
++            return task.get();
++        } catch (Exception exception) {
++            exception.printStackTrace();
++            return Optional.empty();
++        }
++    }
++
++    private Optional<PoiSection> getOrLoad2(int chunkX, int chunkY, int chunkZ) {
++        ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(world, chunkX, chunkZ, "Accessing poi chunk off-main");
++
++        final ca.spottedleaf.moonrise.patches.chunk_system.scheduling.ChunkHolderManager manager = ((ca.spottedleaf.moonrise.patches.chunk_system.level.ChunkSystemServerLevel) world).moonrise$getChunkTaskScheduler().chunkHolderManager;
+ 
+-        if (chunkY >= ca.spottedleaf.moonrise.common.util.WorldUtil.getMinSection(this.world) && chunkY <= ca.spottedleaf.moonrise.common.util.WorldUtil.getMaxSection(this.world)) {
++        if (chunkY >= ca.spottedleaf.moonrise.common.util.WorldUtil.getMinSection(world) && chunkY <= ca.spottedleaf.moonrise.common.util.WorldUtil.getMaxSection(world)) {
+             final ca.spottedleaf.moonrise.patches.chunk_system.level.poi.PoiChunk ret = manager.getPoiChunkIfLoaded(chunkX, chunkZ, true);
+             if (ret != null) {
+                 return ret.getSectionForVanilla(chunkY);
 diff --git a/src/main/java/net/minecraft/world/inventory/AbstractContainerMenu.java b/src/main/java/net/minecraft/world/inventory/AbstractContainerMenu.java
 index dd4218e108f87f3305b76fbc8d88f488b447c609..1f980e8336ad51056aed827ab43f634d60e4c7a1 100644
 --- a/src/main/java/net/minecraft/world/inventory/AbstractContainerMenu.java

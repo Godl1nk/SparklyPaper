@@ -71,10 +71,10 @@ index 223259e7a09ada681b6181c898f6857888594f85..ad5ad428b72f696a68a9ed1436bede71
      private static ToIntFunction<BlockState> litBlockEmission(int litLevel) {
          return state -> state.getValue(BlockStateProperties.LIT) ? litLevel : 0;
 diff --git a/src/test/java/org/bukkit/craftbukkit/legacy/LegacyTest.java b/src/test/java/org/bukkit/craftbukkit/legacy/LegacyTest.java
-index b441eac617347131f2c58ae5092428eb0538c839..cb5d89b0fb8d9a579438387d5d317d662d0f1e0c 100644
+index ef3c97ea99ddf20e9219999927ae80a31dffa7a5..f2f73dd240a703e19e502178f901c61de269ff1b 100644
 --- a/src/test/java/org/bukkit/craftbukkit/legacy/LegacyTest.java
 +++ b/src/test/java/org/bukkit/craftbukkit/legacy/LegacyTest.java
-@@ -126,7 +126,9 @@ public class LegacyTest {
+@@ -125,7 +125,9 @@ public class LegacyTest extends AbstractTestingBase {
              Material.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE, Material.BOLT_ARMOR_TRIM_SMITHING_TEMPLATE, Material.FLOW_POTTERY_SHERD, Material.GUSTER_POTTERY_SHERD, Material.SCRAPE_POTTERY_SHERD, Material.BREEZE_ROD, Material.OMINOUS_TRIAL_KEY, Material.OMINOUS_BOTTLE,
              // 1.21
              Material.MUSIC_DISC_CREATOR, Material.MUSIC_DISC_CREATOR_MUSIC_BOX, Material.MUSIC_DISC_PRECIPICE,
@@ -85,3 +85,15 @@ index b441eac617347131f2c58ae5092428eb0538c839..cb5d89b0fb8d9a579438387d5d317d66
              Material.LEGACY_AIR, Material.LEGACY_DEAD_BUSH, Material.LEGACY_BURNING_FURNACE, Material.LEGACY_WALL_SIGN, Material.LEGACY_REDSTONE_TORCH_OFF, Material.LEGACY_SKULL, Material.LEGACY_REDSTONE_COMPARATOR_ON, Material.LEGACY_WALL_BANNER, Material.LEGACY_MONSTER_EGG));
  
      private final Set<Material> INVERSION_FAILS = new HashSet<>(Arrays.asList(Material.LEGACY_DOUBLE_STEP, Material.LEGACY_GLOWING_REDSTONE_ORE, Material.LEGACY_DIODE_BLOCK_ON, Material.LEGACY_REDSTONE_LAMP_ON, Material.LEGACY_WOOD_DOUBLE_STEP,
+diff --git a/src/test/java/org/bukkit/support/AbstractTestingBase.java b/src/test/java/org/bukkit/support/AbstractTestingBase.java
+index 4e9612600822bc1b52b8528dff2783d43385ec73..315dfaf65994fd071c5434a78a8a8d91ea508cc8 100644
+--- a/src/test/java/org/bukkit/support/AbstractTestingBase.java
++++ b/src/test/java/org/bukkit/support/AbstractTestingBase.java
+@@ -79,6 +79,6 @@ public abstract class AbstractTestingBase {
+             }
+         }
+         INVALIDATED_MATERIALS = builder.build();
+-        assertEquals(610, INVALIDATED_MATERIALS.size(), "Expected 610 invalidated materials (got " + INVALIDATED_MATERIALS.size() + ")");
++        assertEquals(617, INVALIDATED_MATERIALS.size(), "Expected 610 invalidated materials (got " + INVALIDATED_MATERIALS.size() + ")"); // SparklyPaper - custom blocks (this always needs to be the amount of non-legacy materials in the enum)
+     }
+ }
